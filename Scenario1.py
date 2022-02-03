@@ -18,16 +18,12 @@ import carla
 from carla import ColorConverter as cc
 
 import argparse
-import collections
-import datetime
 import logging
 import math
 import random
 import re
 import weakref
 import time
-
-
 
 IM_WIDTH = 2560
 IM_HEIGHT = 1440
@@ -38,44 +34,10 @@ walkers_list = []
 try:
     import pygame
     from pygame.locals import KMOD_CTRL
-    from pygame.locals import KMOD_SHIFT
-    from pygame.locals import K_0
-    from pygame.locals import K_9
-    from pygame.locals import K_BACKQUOTE
     from pygame.locals import K_BACKSPACE
-    from pygame.locals import K_COMMA
-    from pygame.locals import K_DOWN
     from pygame.locals import K_ESCAPE
-    from pygame.locals import K_F1
-    from pygame.locals import K_LEFT
-    from pygame.locals import K_PERIOD
-    from pygame.locals import K_RIGHT
-    from pygame.locals import K_SLASH
-    from pygame.locals import K_SPACE
-    from pygame.locals import K_TAB
-    from pygame.locals import K_UP
-    from pygame.locals import K_a
-    from pygame.locals import K_b
-    from pygame.locals import K_c
-    from pygame.locals import K_d
-    from pygame.locals import K_g
-    from pygame.locals import K_h
-    from pygame.locals import K_i
-    from pygame.locals import K_l
-    from pygame.locals import K_m
-    from pygame.locals import K_n
-    from pygame.locals import K_o
-    from pygame.locals import K_p
     from pygame.locals import K_q
-    from pygame.locals import K_r
-    from pygame.locals import K_s
-    from pygame.locals import K_t
-    from pygame.locals import K_v
-    from pygame.locals import K_w
-    from pygame.locals import K_x
-    from pygame.locals import K_z
-    from pygame.locals import K_MINUS
-    from pygame.locals import K_EQUALS
+
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
@@ -365,8 +327,9 @@ class World(object):
             self.player.set_autopilot(True)
         
         spawn_points = self.map.get_spawn_points()
-        spawn_vehicles_around_ego_vehicles(self.player, radius=60, spawn_points=spawn_points, numbers_of_vehicles=100, world=self.world, client=self.client)
-        spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=55)
+        spawn_vehicles_around_ego_vehicles(self.player, radius=60, spawn_points=spawn_points, numbers_of_vehicles=200, world=self.world, client=self.client)
+        spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=200)
+
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player, self._gamma)
         self.camera_manager.transform_index = cam_pos_index
@@ -607,10 +570,21 @@ def game_loop(args):
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
     
-            if time.time() - oldTime >= (59*2) and time.time() < (60*3) and weather != static_weather_parameters[0]:
+            if time.time() - oldTime >= (59*2) and time.time() - oldTime < (60*3) and weather != static_weather_parameters[0]:
                 weather = static_weather_parameters[0]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
+
+            if time.time() - oldTime >= (59*3) and time.time() - oldTime < (60*4) and weather != static_weather_parameters[12]:
+                weather = static_weather_parameters[12]
+                sim_world.set_weather(weather)
+                sys.stdout.write(str(weather))
+
+            if time.time() - oldTime >= (59*4) and time.time() - oldTime < (60*5) and weather != static_weather_parameters[8]:
+                weather = static_weather_parameters[8]
+                sim_world.set_weather(weather)
+                sys.stdout.write(str(weather))
+
 
             world.render(display)
             pygame.display.flip()
