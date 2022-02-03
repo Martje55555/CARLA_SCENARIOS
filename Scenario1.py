@@ -368,12 +368,15 @@ class World(object):
             self.modify_vehicle_physics(self.player)
             self.player.set_autopilot(True)
         
+        # spawn more vehicles
         spawn_points = self.map.get_spawn_points()
         spawn_vehicles_around_ego_vehicles(self.player, radius=60, spawn_points=spawn_points, numbers_of_vehicles=60, world=self.world, client=self.client)
         
+        # spawn bikes
         spawn_points = self.map.get_spawn_points()
         spawn_bikes(self.player, radius=50, spawn_points=spawn_points, number_of_bikes=15, world=self.world, client=self.client)
         
+        # spawn pedestrians
         spawn_points = self.map.get_spawn_points()
         spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=60)
 
@@ -527,7 +530,6 @@ class KeyboardControl(object):
                     return True
                 elif event.key == K_BACKSPACE:
                     if self._autopilot_enabled:
-                        #world.player.set_autopilot(False)
                         world.restart()
                         world.player.set_autopilot(True)
                     else:
@@ -611,32 +613,32 @@ def game_loop(args):
             if controller.parse_events(client, world, clock, args.sync):
                 return
 
-            # Hard Rain Sunset
+            # Hard Rain Sunset - 1 min marker
             if time.time() - oldTime >= (59) and time.time() - oldTime < (59*2) and weather != static_weather_parameters[12]:
                 weather = static_weather_parameters[12]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
                 
-            # Clear Noon
+            # Clear Noon - 2 min marker
             if time.time() - oldTime >= (59*2) and time.time() - oldTime < (60*3) and weather != static_weather_parameters[0]:
                 weather = static_weather_parameters[0]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
                 
-            # Hard Rain Noon
+            # Hard Rain Noon - 3 min marker
             if time.time() - oldTime >= (59*3) and time.time() - oldTime < (60*4) and weather != static_weather_parameters[5]:
                 weather = static_weather_parameters[5]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
                 
-            # Cloudy Sunset
+            # Cloudy Sunset - 4 min marker
             if time.time() - oldTime >= (59*4) and time.time() - oldTime < (60*5) and weather != static_weather_parameters[8]:
                 weather = static_weather_parameters[8]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
 
-            # Soft Rain Noon
-            if time.time() - oldTime >= (59*5) and time.time() - oldTime < (60*6) and weather != static_weater_parameters[6]:
+            # Soft Rain Noon - 5 min marker
+            if time.time() - oldTime >= (59*5) and time.time() - oldTime < (60*6) and weather != static_weather_parameters[6]:
                 weather = static_weather_parameters
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
