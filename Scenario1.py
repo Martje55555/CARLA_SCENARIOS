@@ -53,7 +53,7 @@ def find_weather_presets():
     presets = [x for x in dir(carla.WeatherParameters) if re.match('[A-Z].+', x)]
     return [(getattr(carla.WeatherParameters, x), name(x)) for x in presets]
 
-def get_actor_display_name(actor, truncate=250):
+def get_actor_name(actor, truncate=250):
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
 
@@ -384,7 +384,7 @@ class World(object):
         self.camera_manager = CameraManager(self.player, self._gamma)
         self.camera_manager.transform_index = cam_pos_index
         self.camera_manager.set_sensor(cam_index, notify=False)
-        actor_type = get_actor_display_name(self.player)
+        actor_type = get_actor_name(self.player)
 
         if self.sync:
             self.world.tick()
