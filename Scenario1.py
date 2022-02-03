@@ -221,7 +221,7 @@ def spawn_vehicles_around_ego_vehicles(ego_vehicle, radius, spawn_points, number
             accessible_points.append(spawn_point)
 
     vehicle_bps = world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
-    vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4 wheels
+    vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4
 
     vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
     if len(accessible_points) < numbers_of_vehicles:
@@ -238,8 +238,49 @@ def spawn_vehicles_around_ego_vehicles(ego_vehicle, radius, spawn_points, number
         except:
             print('failed')  # if failed, print the hints.
             pass
-# you also can add those free vehicle into trafficemanager,and set them to autopilot.
-# Only need to get rid of comments for below code. Otherwise, the those vehicle will be static
+# add those free vehicle into trafficemanager, and set them to autopilot.
+    tm = client.get_trafficmanager()  # create a TM object
+    tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
+    tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
+    for v in vehicle_list:  # set every vehicle's mode
+        v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
+        tm.ignore_lights_percentage(v, 0)
+        tm.distance_to_leading_vehicle(v, 0.8)
+        tm.vehicle_percentage_speed_difference(v, -15)
+        tm.update_vehicle_lights(v, True)
+    print(len(vehicle_list))
+
+
+def spawn_bikes(ego_vehicle, radius, spawn_points, number_of_bikes, world, client):
+    np.random.shuffle(spawn_points)  # shuffle  all the spawn points
+    ego_location = ego_vehicle.get_location()
+    accessible_points = []
+    for spawn_point in spawn_points:
+        dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
+        # it also can include z-coordinate,but it is unnecessary
+        if dis < radius:
+            print(dis)
+            accessible_points.append(spawn_point)
+
+    vehicle_bps = world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
+    vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 2] # specify bikies
+
+    vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
+    if len(accessible_points) < number_of_bikes:
+        # if your radius is relatively small,the satisfied points may be insufficient
+        numbers_of_vehicles = len(accessible_points)
+
+    for i in range(number_of_bikes):  # generate the free vehicle
+        point = accessible_points[i]
+        vehicle_bp = np.random.choice(vehicle_bps)
+        try:
+            vehicle = world.spawn_actor(vehicle_bp, point)
+            vehicle_list.append(vehicle)
+            actor_list.append(vehicle)
+        except:
+            print('failed')  # if failed, print the hints.
+            pass
+# add those free vehicle into trafficemanager, and set them to autopilot.
     tm = client.get_trafficmanager()  # create a TM object
     tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
     tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
@@ -249,6 +290,7 @@ def spawn_vehicles_around_ego_vehicles(ego_vehicle, radius, spawn_points, number
         tm.distance_to_leading_vehicle(v, 0.5)
         tm.vehicle_percentage_speed_difference(v, -20)
     print(len(vehicle_list))
+
 
 class World(object):
     def __init__(self, carla_world, args, client):
@@ -327,8 +369,13 @@ class World(object):
             self.player.set_autopilot(True)
         
         spawn_points = self.map.get_spawn_points()
-        spawn_vehicles_around_ego_vehicles(self.player, radius=60, spawn_points=spawn_points, numbers_of_vehicles=200, world=self.world, client=self.client)
-        spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=200)
+        spawn_vehicles_around_ego_vehicles(self.player, radius=60, spawn_points=spawn_points, numbers_of_vehicles=60, world=self.world, client=self.client)
+        
+        spawn_points = self.map.get_spawn_points()
+        spawn_bikes(self.player, radius=50, spawn_points=spawn_points, number_of_bikes=15, world=self.world, client=self.client)
+        
+        spawn_points = self.map.get_spawn_points()
+        spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=60)
 
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player, self._gamma)
@@ -531,20 +578,20 @@ def game_loop(args):
         controller = KeyboardControl(world, True)
 
         static_weather_parameters = [
-            carla.WeatherParameters.ClearNoon,
-            carla.WeatherParameters.CloudyNoon,
-            carla.WeatherParameters.WetNoon,
-            carla.WeatherParameters.WetCloudyNoon,
-            carla.WeatherParameters.MidRainyNoon,
-            carla.WeatherParameters.HardRainNoon,
-            carla.WeatherParameters.SoftRainNoon,
-            carla.WeatherParameters.ClearSunset,
-            carla.WeatherParameters.CloudySunset,
-            carla.WeatherParameters.WetSunset,
-            carla.WeatherParameters.WetCloudySunset,
-            carla.WeatherParameters.MidRainSunset,
-            carla.WeatherParameters.HardRainSunset,
-            carla.WeatherParameters.SoftRainSunset,
+            carla.WeatherParameters.ClearNoon,  #0
+            carla.WeatherParameters.CloudyNoon, #1
+            carla.WeatherParameters.WetNoon,     #2
+            carla.WeatherParameters.WetCloudyNoon, #3 
+            carla.WeatherParameters.MidRainyNoon,  #4
+            carla.WeatherParameters.HardRainNoon,  #5
+            carla.WeatherParameters.SoftRainNoon,  #6 
+            carla.WeatherParameters.ClearSunset,   #7
+            carla.WeatherParameters.CloudySunset,  #8
+            carla.WeatherParameters.WetSunset,     #9
+            carla.WeatherParameters.WetCloudySunset, #10
+            carla.WeatherParameters.MidRainSunset,    #11
+            carla.WeatherParameters.HardRainSunset,   #12
+            carla.WeatherParameters.SoftRainSunset,   #13
         ]
 
         if args.sync:
@@ -554,9 +601,8 @@ def game_loop(args):
 
         clock = pygame.time.Clock()
 
-        #timeout = time.time() + 30.0  # 60*5 = 5 minutes from now
         oldTime = time.time()
-        weather = static_weather_parameters[0]
+        weather = static_weather_parameters[0] # Clear Noon
 
         while True:
             if args.sync:
@@ -565,26 +611,35 @@ def game_loop(args):
             if controller.parse_events(client, world, clock, args.sync):
                 return
 
+            # Hard Rain Sunset
             if time.time() - oldTime >= (59) and time.time() - oldTime < (59*2) and weather != static_weather_parameters[12]:
                 weather = static_weather_parameters[12]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
-    
+                
+            # Clear Noon
             if time.time() - oldTime >= (59*2) and time.time() - oldTime < (60*3) and weather != static_weather_parameters[0]:
                 weather = static_weather_parameters[0]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
-
-            if time.time() - oldTime >= (59*3) and time.time() - oldTime < (60*4) and weather != static_weather_parameters[12]:
-                weather = static_weather_parameters[12]
+                
+            # Hard Rain Noon
+            if time.time() - oldTime >= (59*3) and time.time() - oldTime < (60*4) and weather != static_weather_parameters[5]:
+                weather = static_weather_parameters[5]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
-
+                
+            # Cloudy Sunset
             if time.time() - oldTime >= (59*4) and time.time() - oldTime < (60*5) and weather != static_weather_parameters[8]:
                 weather = static_weather_parameters[8]
                 sim_world.set_weather(weather)
                 sys.stdout.write(str(weather))
 
+            # Soft Rain Noon
+            if time.time() - oldTime >= (59*5) and time.time() - oldTime < (60*6) and weather != static_weater_parameters[6]:
+                weather = static_weather_parameters
+                sim_world.set_weather(weather)
+                sys.stdout.write(str(weather))
 
             world.render(display)
             pygame.display.flip()
@@ -681,6 +736,9 @@ def main():
     except KeyboardInterrupt:
         print('\nCancelled by user. Bye!')
 
+    finally:
+        for actor in actor_list:
+            actor.destroy()
 
 if __name__ == '__main__':
 
