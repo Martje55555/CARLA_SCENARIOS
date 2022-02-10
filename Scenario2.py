@@ -1,4 +1,5 @@
 from __future__ import print_function
+from ast import expr_context, walk
 
 import glob
 from multiprocessing import spawn
@@ -160,8 +161,12 @@ def spawn_pedestrians_around_ego_vehicles(ego_vehicle, radius, spawn_points, num
 
     walker_transform = vehicle_waypoint.transform
     walker_blueprint = "walker.pedestrian.0001" 
-    walker = world.try_spawn_actor(walker_blueprint, walker_transform)
-    actor_list.append(walker)
+    try:
+        walker = world.try_spawn_actor(walker_blueprint, walker_transform)
+        actor_list.append(walker)
+        print(walker)
+    except:
+        print('Failed to print pedestrian')
 
 def spawn_vehicles_around_ego_vehicles(ego_vehicle, radius, spawn_points, numbers_of_vehicles, world, client):
     # parameters:
@@ -517,7 +522,7 @@ def game_loop(args):
 
     try:
         client = carla.Client(args.host, args.port)
-        client.set_timeout(20.0)
+        client.set_timeout(200.0)
 
         sim_world = client.get_world()
         if args.sync:
@@ -579,47 +584,58 @@ def game_loop(args):
             if controller.parse_events(client, world, clock, args.sync):
                 return
 
+            loc = actor_list[0].get_location()
+            #print(loc)
+            #print(type(loc.x))
+            print("\n")
+            #print(-7.123 < -7)
+            print(len(walkers_list))
+
+            if loc.x < -48.0 and loc.x > -49.0 and loc.y < -7.0 and loc.y > -8.0:
+                spawn_pedestrians(world=sim_world, client=client, number_of_pedestrians=20)
             
 
             # Hard Rain Sunset - 1 min marker
             if time.time() - oldTime >= (59) and time.time() - oldTime < (59*2) and weather != static_weather_parameters[12]:
                 weather = static_weather_parameters[12]
                 sim_world.set_weather(weather)
-                print("\n")
-                print(len(actor_list))
+                
+                #print(len(actor_list))
+                # actor_list[0].set_autopilot(False)
+                # loc = actor_list[0].get_location()
+
                 # spawn more vehicles
                 world_map = sim_world.get_map()
                 # print(world_map.get_crosswalks())
                 spawn_points = world_map.get_spawn_points()
                 # spawn_vehicles_around_ego_vehicles(ego_vehicle=actor_list[0], radius=60, spawn_points=spawn_points, numbers_of_vehicles=80, world=sim_world, client=client)
-                spawn_pedestrians_around_ego_vehicles(ego_vehicle=actor_list[0], radius=60, spawn_points=spawn_points, number_of_pedestrians=8, world=sim_world, client=client)
+                #spawn_pedestrians_around_ego_vehicles(ego_vehicle=actor_list[0], radius=60, spawn_points=spawn_points, number_of_pedestrians=8, world=sim_world, client=client)
 
-
-                sys.stdout.write(str(weather))
+                #sys.stdout.write(str(weather))
                 
             # Clear Noon - 2 min marker
             if time.time() - oldTime >= (59*2) and time.time() - oldTime < (60*3) and weather != static_weather_parameters[0]:
                 weather = static_weather_parameters[0]
                 sim_world.set_weather(weather)
-                sys.stdout.write(str(weather))
+                #sys.stdout.write(str(weather))
                 
             # Hard Rain Noon - 3 min marker
             if time.time() - oldTime >= (59*3) and time.time() - oldTime < (60*4) and weather != static_weather_parameters[5]:
                 weather = static_weather_parameters[5]
                 sim_world.set_weather(weather)
-                sys.stdout.write(str(weather))
+                #sys.stdout.write(str(weather))
                 
             # Cloudy Sunset - 4 min marker
             if time.time() - oldTime >= (59*4) and time.time() - oldTime < (60*5) and weather != static_weather_parameters[8]:
                 weather = static_weather_parameters[8]
                 sim_world.set_weather(weather)
-                sys.stdout.write(str(weather))
+                #sys.stdout.write(str(weather))
 
             # Soft Rain Noon - 5 min marker
             if time.time() - oldTime >= (59*5) and time.time() - oldTime < (60*6) and weather != static_weather_parameters[6]:
                 weather = static_weather_parameters[6]
                 sim_world.set_weather(weather)
-                sys.stdout.write(str(weather))
+                #sys.stdout.write(str(weather))
 
             world.render(display)
             pygame.display.flip()
@@ -670,7 +686,7 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='2560x1440',
+        default='600x600',
         help='window resolution (default: 2560x1440)')
     argparser.add_argument(
         '--filter',
