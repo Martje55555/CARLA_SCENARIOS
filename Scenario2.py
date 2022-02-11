@@ -1,5 +1,6 @@
 from __future__ import print_function
 from ast import expr_context, walk
+from audioop import cross
 
 import glob
 from multiprocessing import spawn
@@ -585,24 +586,27 @@ def game_loop(args):
                 return
 
             loc = actor_list[0].get_location()
-            #print(loc)
-            #print(type(loc.x))
-            print("\n")
-            #print(-7.123 < -7)
-            print(len(walkers_list))
+            world_map = sim_world.get_map()
+            crosswalks = world_map.get_crosswalks()
+        
 
-            if loc.x < -48.0 and loc.x > -49.0 and loc.y < -7.0 and loc.y > -8.0:
-                spawn_pedestrians(world=sim_world, client=client, number_of_pedestrians=20)
+            for i in range(len(crosswalks)):
+                if round(loc.x) == round(crosswalks[i].x) and round(loc.y) == round(crosswalks[i].y):
+                    print('SPAWNING PEDESTRIANS')
+                    spawn_pedestrians(world=sim_world, client=client, number_of_pedestrians=40)
+                else:
+                    print([round(loc.x), round(loc.y)])
+                    print([round(crosswalks[i].x), round(crosswalks[i].y)])
+
+
+            # if loc.x < -48.0 and loc.x > -49.0 and loc.y < -7.0 and loc.y > -8.0:
+            #     spawn_pedestrians(world=sim_world, client=client, number_of_pedestrians=20)
             
 
             # Hard Rain Sunset - 1 min marker
             if time.time() - oldTime >= (59) and time.time() - oldTime < (59*2) and weather != static_weather_parameters[12]:
                 weather = static_weather_parameters[12]
                 sim_world.set_weather(weather)
-                
-                #print(len(actor_list))
-                # actor_list[0].set_autopilot(False)
-                # loc = actor_list[0].get_location()
 
                 # spawn more vehicles
                 world_map = sim_world.get_map()
@@ -686,7 +690,7 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='600x600',
+        default='1920x1080',
         help='window resolution (default: 2560x1440)')
     argparser.add_argument(
         '--filter',
