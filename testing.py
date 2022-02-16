@@ -3,6 +3,7 @@ from ast import expr_context, walk
 from audioop import cross
 
 import glob
+from http import client
 from multiprocessing import spawn
 import os
 import sys
@@ -150,6 +151,32 @@ class World(object):
             actor.apply_physics_control(physics_control)
         except Exception:
             pass
+
+    def spawn_on_crosswalk(self, actor):
+        try:
+            blueprintsWalkers = self.world.get_blueprint_library().filter("walker.pedestrian.*")
+            walker_bp = random.choice(blueprintsWalkers)
+            world_map = self.world.get_map()
+            crosswalks = world_map.get_crosswalks()
+            spawn_point = crosswalks[0]
+            print(spawn_point)
+
+            batch = []
+            batch.append(carla.command.SpawnActor(walker_bp, spawn_point))
+
+            results = self.client.apply_batch_sync(batch, True)
+            for i in range(len(results)):
+                if results[i].error:
+                    logging.error(results[i].error)
+                else:
+                    walkers_list.append({"id": results[i].actor_id})
+
+            self.world.wait_for_tick()
+
+            
+
+        except Exception as er:
+            print('error', er)
 
     def spawn_pedestrian_near(self, actor):
         try:
@@ -405,9 +432,9 @@ def game_loop(args):
                 return
 
             if time.time() - oldTime >= 10 and time.time() - oldTime < 11:
-                actor_list[0].set_autopilot(False)
+                #actor_list[0].set_autopilot(False)
                 print(actor_list[0].get_location())
-                world.spawn_pedestrian_near(actor_list[0])
+                world.spawn_on_crosswalk(actor_list[0])
                 print(len(actor_list))
     
             world.render(display)
