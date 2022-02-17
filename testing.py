@@ -173,8 +173,6 @@ class World(object):
 
             self.world.wait_for_tick()
 
-            
-
         except Exception as er:
             print('error', er)
 
