@@ -31,8 +31,6 @@ actor_list = []
 all_id = []
 walkers_list = []
 normal_vehicles = []
-#agro_vehicles = []
-cautious_vehicles = []
 
 try:
     import pygame
@@ -160,6 +158,8 @@ class World(object):
             sys.exit(1)
         self.player = None
         self.agro_vehicles = []
+        self.cautious_vehicles = []
+        self.normal_vehicles = []
         self.collision_sensor = None
         self.camera_manager = None
         self.client = client
@@ -225,19 +225,11 @@ class World(object):
         
         # spawn more vehicles
         #spawn_points = self.map.get_spawn_points()
-        #spawn_vehicles_around_ego_vehicles(self.player, radius=50, spawn_points=spawn_points, numbers_of_vehicles=90, world=self.world, client=self.client)
-        
-        #spawn dangerous vehicles
-        #spawn_points = self.map.get_spawn_points()
-        #spawn_agro_vehicles(self.player, radius=50, spawn_points=spawn_points, numbers_of_vehicles=10, world=self.world, client=self.client)
+        self.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=15)
 
-        # spawn bikes
-        # spawn_points = self.map.get_spawn_points()
-        # spawn_bikes(self.player, radius=50, spawn_points=spawn_points, number_of_bikes=15, world=self.world, client=self.client)
-        
         # spawn pedestrians
         #spawn_points = self.map.get_spawn_points()
-        #spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=100)
+        spawn_pedestrians(world=self.world, client=self.client, number_of_pedestrians=80)
 
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player, self._gamma)
@@ -281,7 +273,7 @@ class World(object):
             except:
                 print('failed')  # if failed, print the hints.
             
-    # add those free vehicle into trafficemanager, and set them to autopilot.
+        # add those free vehicle into trafficemanager, and set them to autopilot.
         tm = self.client.get_trafficmanager()  # create a TM object
         tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
         tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
@@ -303,7 +295,6 @@ class World(object):
         accessible_points = []
         for spawn_point in spawn_points:
             dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
-            # it also can include z-coordinate,but it is unnecessary
             if dis < radius:
                 print(dis)
                 accessible_points.append(spawn_point)
@@ -327,7 +318,7 @@ class World(object):
             except:
                 print('failed')  # if failed, print the hints.
                 
-    # add those free vehicle into trafficemanager, and set them to autopilot.
+        # add those free vehicle into trafficemanager, and set them to autopilot.
         tm = self.client.get_trafficmanager()  # create a TM object
         tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
         tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
@@ -340,6 +331,50 @@ class World(object):
             tm.distance_to_leading_vehicle(v, 0)
             tm.vehicle_percentage_speed_difference(v, -20)
             tm.update_vehicle_lights(v, True)
+        print(len(vehicle_list))
+
+    def spawn_cautious_vehicles(self, radius, numbers_of_vehicles):
+        spawn_points = self.map.get_spawn_points()
+        np.random.shuffle(spawn_points)  # shuffle  all the spawn points
+        ego_location = self.player.get_location()
+        accessible_points = []
+        for spawn_point in spawn_points:
+            dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
+            if dis < radius:
+                print(dis)
+                accessible_points.append(spawn_point)
+
+        vehicle_bps = self.world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
+        vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4
+
+        vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
+        if len(accessible_points) < numbers_of_vehicles:
+            # if your radius is relatively small,the satisfied points may be insufficient
+            numbers_of_vehicles = len(accessible_points)
+
+        for i in range(numbers_of_vehicles):  # generate the free vehicle
+            point = accessible_points[i]
+            vehicle_bp = np.random.choice(vehicle_bps)
+            try:
+                vehicle = self.world.spawn_actor(vehicle_bp, point)
+                vehicle_list.append(vehicle)
+                self.cautious_vehicles.append()
+            except:
+                print('failed')  # if failed, print the hints.
+                
+        # add those free vehicle into trafficemanager, and set them to autopilot.
+        tm = self.client.get_trafficmanager()  # create a TM object
+        tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
+        tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
+        tm.set_random_device_seed(9)
+        tm.set_respawn_dormant_vehicles(True)
+        tm.set_boundaries_respawn_dormant_vehicles(20, 500)
+        for v in vehicle_list:  # set every vehicle's mode
+            v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
+            tm.distance_to_leading_vehicle(v, 5)
+            tm.vehicle_percentage_speed_difference(v, 80)
+            tm.update_vehicle_lights(v, True)
+            tm.auto_lane_change(v, False)
         print(len(vehicle_list))
 
     def next_weather(self, reverse=False):
@@ -573,32 +608,33 @@ def game_loop(args):
             if time.time() - oldTime >= (10) and time.time() - oldTime < (20) and weather != static_weather_parameters[12]:
                 weather = static_weather_parameters[12]
                 sim_world.set_weather(weather)
-                world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=10)
+                #world.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=10)
+                world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=5)
                 
             # Clear Noon - 2 min marker
             if time.time() - oldTime >= (20) and time.time() - oldTime < (30) and weather != static_weather_parameters[0]:
                 weather = static_weather_parameters[0]
                 sim_world.set_weather(weather)
-                # world.destroyVehicles(typeOfCars='agro')
-                world.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=20)
+                world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8)
+                # world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=1)
                 
             # Hard Rain Noon - 3 min marker
             if time.time() - oldTime >= (30) and time.time() - oldTime < (40) and weather != static_weather_parameters[5]:
                 weather = static_weather_parameters[5]
                 sim_world.set_weather(weather)
-                sys.stdout.write(str(weather))
+                world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=25)
                 
             # Cloudy Sunset - 4 min marker
             if time.time() - oldTime >= (40) and time.time() - oldTime < (50) and weather != static_weather_parameters[8]:
                 weather = static_weather_parameters[8]
                 sim_world.set_weather(weather)
-                sys.stdout.write(str(weather))
+                world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=2)
 
             # Soft Rain Noon - 5 min marker
             if time.time() - oldTime >= (50) and time.time() - oldTime < (60) and weather != static_weather_parameters[6]:
                 weather = static_weather_parameters[6]
                 sim_world.set_weather(weather)
-                sys.stdout.write(str(weather))
+                world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=1)
 
             world.render(display)
             pygame.display.flip()
