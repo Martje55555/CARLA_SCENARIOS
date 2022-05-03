@@ -46,17 +46,19 @@ try:
 except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
 
-
+# Find the weather presets to be able to use in environment
 def find_weather_presets():
     rgx = re.compile('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)')
     name = lambda x: ' '.join(m.group(0) for m in rgx.finditer(x))
     presets = [x for x in dir(carla.WeatherParameters) if re.match('[A-Z].+', x)]
     return [(getattr(carla.WeatherParameters, x), name(x)) for x in presets]
 
+# Return the different actor names
 def get_actor_name(actor, truncate=250):
     name = ' '.join(actor.type_id.replace('_', '.').title().split('.')[1:])
     return (name[:truncate - 1] + u'\u2026') if len(name) > truncate else name
 
+# Return the different actor blueprints
 def get_actor_blueprints(world, filter, generation):
     bps = world.get_blueprint_library().filter(filter)
 
@@ -85,6 +87,7 @@ def get_actor_blueprints(world, filter, generation):
 # -- World ---------------------------------------------------------------------
 # ==============================================================================
 
+# Spawning Pedestrians givent the world, client and amount of pedestrians
 def spawn_pedestrians(world, client, number_of_pedestrians):
     # add pedestrians to the world
     blueprintsWalkers = world.get_blueprint_library().filter("walker.pedestrian.*")
@@ -130,6 +133,7 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
 
     world.wait_for_tick()
 
+    #if magnitude(npc.get_location() - av.get_location()) < threshold:
     for i in range(0, len(all_actors), 2):
         # start walker
         all_actors[i].start()
@@ -139,6 +143,7 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
         all_actors[i].set_max_speed(1 + random.random())
  
     print(len(walkers_list))
+
 
 class World(object):
     def __init__(self, carla_world, args, client):
@@ -253,6 +258,7 @@ class World(object):
         else:
             self.world.wait_for_tick()
 
+    # Function to spawn "normal" vehicles around the ego or hero vehicle
     def spawn_vehicles_around_ego_vehicles(self, radius, numbers_of_vehicles):
         spawn_points = self.map.get_spawn_points()
         np.random.shuffle(spawn_points)  # shuffle  all the spawn points
@@ -260,7 +266,7 @@ class World(object):
         accessible_points = []
         for spawn_point in spawn_points:
             dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
-
+            # it also can include z-coordinate,but it is unnecessary
             if dis < radius:
                 print(dis)
                 accessible_points.append(spawn_point)
@@ -273,7 +279,7 @@ class World(object):
             # if your radius is relatively small,the satisfied points may be insufficient
             numbers_of_vehicles = len(accessible_points)
 
-        for i in range(numbers_of_vehicles):  # generate the free vehicle
+        for i in range(numbers_of_vehicles):
             point = accessible_points[i]
             vehicle_bp = np.random.choice(vehicle_bps)
             try:
@@ -284,21 +290,22 @@ class World(object):
             except:
                 print('failed')  # if failed, print the hints.
             
-        # add those free vehicle into trafficemanager, and set them to autopilot.
+        # add those vehicles into trafficemanager, and set them to autopilot.
         tm = self.client.get_trafficmanager()  # create a TM object
         tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
         tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
         tm.set_random_device_seed(9)
         tm.set_respawn_dormant_vehicles(True)
         tm.set_boundaries_respawn_dormant_vehicles(20, 500)
-        for v in vehicle_list:  # set every vehicle's mode
-            v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
+        for v in vehicle_list:  # set every vehicle's mode to be "normal"
+            v.set_autopilot(True, tm_port)
             tm.ignore_lights_percentage(v, 0)
             tm.distance_to_leading_vehicle(v, 5.0)
             tm.vehicle_percentage_speed_difference(v, -15)
             tm.update_vehicle_lights(v, True)
         print(len(vehicle_list))
 
+    # Similar to the previous function, the only difference is that we are changing some parameters to reflect aggressive vehicles
     def spawn_agro_vehicles(self, radius, numbers_of_vehicles, update):
         if update:
             print('THIS IS ACTUALLY HAPPENING')
@@ -341,14 +348,15 @@ class World(object):
                     
             self.tm3.global_percentage_speed_difference(10.0)  # set the global speed limitation
             tm_port = self.tm3.get_port()
-            for v in vehicle_list:  # set every vehicle's mode
-                v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
+            for v in vehicle_list:  # set every vehicle's mode to be "aggressive"
+                v.set_autopilot(True, tm_port)
                 self.tm3.ignore_lights_percentage(v, 100)
                 self.tm3.distance_to_leading_vehicle(v, 0)
                 self.tm3.vehicle_percentage_speed_difference(v, -20)
                 self.tm3.update_vehicle_lights(v, True)
             print(len(vehicle_list))
 
+    # Similar to the previous function, the only difference is that we are changing some parameters to reflect cautious vehicles
     def spawn_cautious_vehicles(self, radius, numbers_of_vehicles, update):
 
         if update == True:
@@ -391,10 +399,10 @@ class World(object):
             
             #tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
             tm_port = self.tm2.get_port()  # get the port of tm. we need add vehicle to tm by this port
-            for v in vehicle_list:  # set every vehicle's mode
-                v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
-                self.tm2.distance_to_leading_vehicle(v, 5.0)
-                self.tm2.vehicle_percentage_speed_difference(v, 80)
+            for v in vehicle_list:  # set every vehicle's mode to reflect a cautious vehicle
+                v.set_autopilot(True, tm_port)
+                self.tm2.distance_to_leading_vehicle(v, 10.0)
+                self.tm2.vehicle_percentage_speed_difference(v, 60)
                 self.tm2.update_vehicle_lights(v, True)
                 self.tm2.auto_lane_change(v, False)
             print(len(vehicle_list))
@@ -621,39 +629,33 @@ def game_loop(args):
             if time.time() - oldTime >= (10) and time.time() - oldTime < (20) and weather != static_weather_parameters[12]:
                 weather = static_weather_parameters[12]
                 sim_world.set_weather(weather)
-                world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=False)
-                #world.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=10)
-                world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=15, update=False)
+                world.spawn_vehicles_around_ego_vehicles(radius=50, numbers_of_vehicles=10)
                 
             # Clear Noon - 2 min marker
             if time.time() - oldTime >= (20) and time.time() - oldTime < (30) and weather != static_weather_parameters[0]:
                 weather = static_weather_parameters[0]
                 sim_world.set_weather(weather)
                 world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=True)
-                world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=1, update=True)
                 
             # Hard Rain Noon - 3 min marker
             if time.time() - oldTime >= (30) and time.time() - oldTime < (40) and weather != static_weather_parameters[5]:
                 weather = static_weather_parameters[5]
                 sim_world.set_weather(weather)
-                #world.spawn_cautious_vehicles(radius=50, numbers_of_vehicles=8, update=True)
-                #world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=25)
                 
             # Cloudy Sunset - 4 min marker
             if time.time() - oldTime >= (40) and time.time() - oldTime < (50) and weather != static_weather_parameters[8]:
                 weather = static_weather_parameters[8]
                 sim_world.set_weather(weather)
-                #world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=2)
+                world.spawn_agro_vehicles(radius=50, numbers_of_vehicles=1, update=True)
 
             # Soft Rain Noon - 5 min marker
             if time.time() - oldTime >= (50) and time.time() - oldTime < (60) and weather != static_weather_parameters[6]:
                 weather = static_weather_parameters[6]
                 sim_world.set_weather(weather)
-                #world.spawn_vehicles_around_ego_vehicles(radius=100, numbers_of_vehicles=1)
 
             world.render(display)
             pygame.display.flip()
-   
+          
     finally:
 
         if original_settings:
@@ -667,9 +669,11 @@ def game_loop(args):
 
         pygame.quit()
 
+
 # ==============================================================================
 # -- main() --------------------------------------------------------------------
 # ==============================================================================
+
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -737,10 +741,11 @@ def main():
     print(__doc__)
 
     try:
+
         game_loop(args)
 
     except KeyboardInterrupt:
-        print('\nCancelled by user.')
+        print('\nCancelled by user. Bye!')
 
     finally:
         for actor in actor_list:
