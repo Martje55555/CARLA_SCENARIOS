@@ -11,16 +11,22 @@
 from __future__ import print_function
 
 import argparse
+from audioop import cross
+from bdb import GENERATOR_AND_COROUTINE_FLAGS
 import collections
 import datetime
+from distutils.command.build_scripts import first_line_re
+from distutils.spawn import spawn
 import glob
 import logging
 import math
+from operator import is_
 import os
 import numpy.random as random
 import re
 import sys
 import weakref
+import time
 
 try:
     import pygame
@@ -66,6 +72,10 @@ from agents.navigation.basic_agent import BasicAgent  # pylint: disable=import-e
 # -- Global functions ----------------------------------------------------------
 # ==============================================================================
 
+walkers_list = []
+all_id = []
+cross_walks = []
+walkers = []
 
 def find_weather_presets():
     """Method to find weather presets"""
@@ -78,6 +88,65 @@ def find_weather_presets():
 # ==============================================================================
 # -- World ---------------------------------------------------------------
 # ==============================================================================
+
+# Spawning Pedestrians givent the world, client and amount of pedestrians
+def spawn_pedestrians(world, client, number_of_pedestrians):
+    # add pedestrians to the world
+    blueprintsWalkers = world.get_blueprint_library().filter("walker.pedestrian.*")
+    walker_bp = random.choice(blueprintsWalkers)
+
+    spawn_points = []
+    for i in range(1):
+        spawn_point = carla.Transform()
+        spawn_point.location = cross_walks[0] #world.get_random_location_from_navigation()
+        spawn_point.location.y = spawn_point.location.y + 6
+        spawn_point.location.x = spawn_point.location.x + 2
+        if (spawn_point.location != None):
+            spawn_points.append(spawn_point)
+
+    batch = []
+    for spawn_point in spawn_points:
+        walker_bp = random.choice(blueprintsWalkers)
+        batch.append(carla.command.SpawnActor(walker_bp, spawn_point))
+
+    # apply the batch
+    results = client.apply_batch_sync(batch, True)
+
+    for i in range(len(results)):
+        if results[i].error:
+            logging.error(results[i].error)
+        else:
+            walkers_list.append({"id": results[i].actor_id})
+            walkers.append(results[i])
+
+    batch = []
+    walker_controller_bp = world.get_blueprint_library().find('controller.ai.walker')
+    for i in range(len(walkers_list)):
+        batch.append(carla.command.SpawnActor(walker_controller_bp, carla.Transform(), walkers_list[i]["id"]))
+
+    # apply the batch
+    results = client.apply_batch_sync(batch, True)
+    for i in range(len(results)):
+        if results[i].error:
+            logging.error(results[i].error)
+        else:
+            walkers_list[i]["con"] = results[i].actor_id
+
+    for i in range(len(walkers_list)):
+        all_id.append(walkers_list[i]["con"])
+        all_id.append(walkers_list[i]["id"])
+    all_actors = world.get_actors(all_id)
+
+    world.wait_for_tick()
+
+    #if magnitude(npc.get_location() - av.get_location()) < threshold:
+    for i in range(0, len(all_actors), 2):
+        # start walker
+        all_actors[i].start()
+        # set walk to random point
+        all_actors[i].go_to_location(world.get_random_location_from_navigation())
+        # random max speed
+        all_actors[i].set_max_speed(1 + random.random())
 
 class World(object):
     """ Class representing the surrounding environment """
@@ -117,7 +186,11 @@ class World(object):
             spawn_point.rotation.roll = 0.0
             spawn_point.rotation.pitch = 0.0
 
-            spawn_point = self.map.get_waypoint(carla.Location(x=0, y=30, z=10))
+            # spawn_point = self.map.get_waypoint(carla.Location(x=0, y=30, z=10))
+            spawn_point = self.map.get_waypoint(carla.Location(x=-86.347275, y=24.404694, z=1.0))
+            spawn_point.location.x = -86.347275
+            spawn_point.location.y = 24.404694
+            spawn_point.location.z = 1.0
 
             self.destroy()
             self.player = self.world.try_spawn_actor(bp, spawn_point.transform)
@@ -128,15 +201,15 @@ class World(object):
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
-            #spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+
             spawn_point = spawn_points[0]
-            #print(spawn_point)
-            #spawn_point = self.map.get_waypoint(carla.Location(x=99.078560, y=42.141800, z=10.0))
-            print(spawn_point)
+            spawn_point.location.x = -86.347275
+            spawn_point.location.y = 24.404694
+            spawn_point.location.z = 1.0
+            
+            print(spawn_point.location)
             self.player = self.world.try_spawn_actor(bp, spawn_point)
             self.modify_vehicle_physics(self.player)
-
-            #Transform(Location(x=99.078560, y=42.141800, z=0.600000), Rotation(pitch=0.000000, yaw=90.390709, roll=0.000000))
 
         # Set up the sensors.
         self.camera_manager = CameraManager(self.player)
@@ -175,12 +248,14 @@ class World(object):
         for actor in actors:
             if actor is not None:
                 actor.destroy()
+        for actor in walkers:
+            if actor is not None:
+                actor.destroy()
 
 
 # ==============================================================================
 # -- KeyboardControl -----------------------------------------------------------
 # ==============================================================================
-
 
 class KeyboardControl(object):
     """Class that handles keyboard input."""
@@ -230,8 +305,8 @@ class CameraManager(object):
             blp = bp_library.find(item[0])
             blp.set_attribute('fov', '110')
             if item[0].startswith('sensor.camera'):
-                blp.set_attribute('image_size_x', str(1920))
-                blp.set_attribute('image_size_y', str(1080))
+                blp.set_attribute('image_size_x', str(800))
+                blp.set_attribute('image_size_y', str(900))
             item.append(blp)
         self.index = None
 
@@ -331,10 +406,104 @@ def game_loop(args):
         destination.y = 326
         print(destination)
 
-        agent.set_destination(destination)
-        #agent.set_destination(end_location=212, start_location=326)
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 106.416290
+        end_destination.y = -12.711931
+        print(end_destination)
+
+        agent.set_destination(start_location=destination, end_location=end_destination)
+        first_crosswalk = world.player.get_location()
+        first_crosswalk.x = 84
+        first_crosswalk.y = 25
+        first_crosswalk.z = 0.004
+
+        cross_walks.append(first_crosswalk)
         
         clock = pygame.time.Clock()
+
+        is_spawned = False
+
+        clock = pygame.time.Clock()
+
+        oldTime = time.time()
+
+        index = 0
+        # Getting different end destinations ##########################
+        different_end_destinations = []
+
+        #0
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 110.800049
+        end_destination.y = 72.599747
+        different_end_destinations.append(end_destination)
+
+        # 1
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 90.432556
+        end_destination.y = 12.643750
+        different_end_destinations.append(end_destination)
+
+        # 2
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 52.143875
+        end_destination.y = 106.947296
+        different_end_destinations.append(end_destination)
+
+        # 3
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 113.648468
+        end_destination.y = 4.688451
+        different_end_destinations.append(end_destination)
+
+        # 4
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 68.927277
+        end_destination.y = 27.830568
+        different_end_destinations.append(end_destination)
+
+        #5
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 82.522911
+        end_destination.y = 70.302856
+        different_end_destinations.append(end_destination)
+
+        #6
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 85.100761
+        end_destination.y = 16.689871
+        different_end_destinations.append(end_destination)
+
+        # 7
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 87.605782
+        end_destination.y = 130.068909
+        different_end_destinations.append(end_destination)
+
+        # 8
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 212
+        end_destination.y = 326
+        different_end_destinations.append(end_destination)
+
+        # 9
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = 110.632843
+        end_destination.y = -4.862453
+        different_end_destinations.append(end_destination)
+
+        # 10
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = -44.846107
+        end_destination.y = 45.654007
+        different_end_destinations.append(end_destination)
+
+        # 11
+        end_destination = random.choice(spawn_points).location
+        end_destination.x = -69.321930
+        end_destination.y = -58.023651
+        different_end_destinations.append(end_destination)
+
+        ####################################################
 
         while True:
             clock.tick()
@@ -348,13 +517,34 @@ def game_loop(args):
             world.render(display)
             pygame.display.flip()
 
+            velocity = world.player.get_velocity()
+            speed = math.sqrt(velocity.x ** 2 + velocity.y ** 2 + velocity.z ** 2) # in m/s
+
+            loc = world.player.get_location()
+
+            # SPAWN PEDESTRIAN AT CROSSWALK
+            if loc.x < 55  and loc.x > 50 and loc.y < 25 and loc.y > 22 and is_spawned == False:
+                spawn_pedestrians(world=world.world, client=client, number_of_pedestrians=1) 
+                is_spawned = True
+
+            if time.time() - oldTime >= (59*15) and time.time() - oldTime < (59*16) or index == 12:
+                    print("It has been 15 minutes, scenario ending")
+                    print("index: " + str(index))
+                    print(str(time.time()-oldTime/59))
+                    break
+
+            print(loc)
+
+
             if agent.done():
                 if args.loop:
                     agent.set_destination(random.choice(spawn_points).location)
-                    print("The target has been reached, searching for another target")
+                    print("searching for another target")
                 else:
-                    print("The target has been reached, stopping the simulation")
-                    break
+                    print("The target has been reached, sending new target")
+                    print("\nThis is happening RIGHT NOW")
+                    agent.set_destination(end_location=different_end_destinations[index])
+                    index += 1
 
             control = agent.run_step()
             control.manual_gear_shift = False
@@ -377,7 +567,6 @@ def game_loop(args):
 # ==============================================================================
 # -- main() --------------------------------------------------------------
 # ==============================================================================
-
 
 def main():
     """Main method"""
@@ -403,7 +592,7 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1980x1080',
+        default='800x900',
         help='Window resolution (default: 1280x720)')
     argparser.add_argument(
         '--sync',
