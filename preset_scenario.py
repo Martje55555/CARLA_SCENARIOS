@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-
-# Copyright (c) 2018 Intel Labs.
-# authors: German Ros (german.ros@intel.com)
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
-
-"""Example of automatic vehicle control from client side."""
-
 from __future__ import print_function
 
 import argparse
@@ -76,6 +66,7 @@ walkers_list = []
 all_id = []
 cross_walks = []
 walkers = []
+vehicles = []
 
 def find_weather_presets():
     """Method to find weather presets"""
@@ -96,7 +87,7 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
     walker_bp = random.choice(blueprintsWalkers)
 
     spawn_points = []
-    for i in range(1):
+    for i in range(number_of_pedestrians):
         spawn_point = carla.Transform()
         spawn_point.location = cross_walks[0] #world.get_random_location_from_navigation()
         spawn_point.location.y = spawn_point.location.y + 6
@@ -117,7 +108,6 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
             logging.error(results[i].error)
         else:
             walkers_list.append({"id": results[i].actor_id})
-            walkers.append(results[i])
 
     batch = []
     walker_controller_bp = world.get_blueprint_library().find('controller.ai.walker')
@@ -131,10 +121,12 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
             logging.error(results[i].error)
         else:
             walkers_list[i]["con"] = results[i].actor_id
+            walkers.append(results[i].actor_id)
 
     for i in range(len(walkers_list)):
         all_id.append(walkers_list[i]["con"])
         all_id.append(walkers_list[i]["id"])
+        #walkers.append(walkers_list[i]["id"])
     all_actors = world.get_actors(all_id)
 
     world.wait_for_tick()
@@ -151,7 +143,7 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
 class World(object):
     """ Class representing the surrounding environment """
 
-    def __init__(self, carla_world, args):
+    def __init__(self, carla_world, args, client):
         """Constructor method"""
         self._args = args
         self.world = carla_world
@@ -167,6 +159,7 @@ class World(object):
         self._weather_presets = find_weather_presets()
         self._weather_index = 0
         self._actor_filter = args.filter
+        self.client = client
         self.restart(args)
 
     def restart(self, args):
@@ -209,6 +202,7 @@ class World(object):
             
             print(spawn_point.location)
             self.player = self.world.try_spawn_actor(bp, spawn_point)
+            
             self.modify_vehicle_physics(self.player)
 
         # Set up the sensors.
@@ -220,6 +214,58 @@ class World(object):
             self.world.tick()
         else:
             self.world.wait_for_tick()
+
+    def spawn_vehicles_straight(self, radius, numbers_of_vehicles, x, y):
+        # spawn_points = self.map.get_spawn_points()
+        # np.random.shuffle(spawn_points)  # shuffle  all the spawn points
+        # ego_location = self.player.get_location()
+        # accessible_points = []
+        # for spawn_point in spawn_points:
+        #     dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
+        #     # it also can include z-coordinate,but it is unnecessary
+        #     if dis < radius:
+        #         print(dis)
+        #         accessible_points.append(spawn_point)
+
+        vehicle_bps = self.world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
+        vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4
+
+        vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
+        # if len(accessible_points) < numbers_of_vehicles:
+        #     # if your radius is relatively small,the satisfied points may be insufficient
+        #     numbers_of_vehicles = len(accessible_points)
+
+        accessible_points = self.map.get_spawn_points()
+
+        for i in range(1):
+            point = accessible_points[i]
+            point.location.x = x
+            point.location.y = y
+            point.location.z = 1.0
+            vehicle_bp = np.random.choice(vehicle_bps)
+            try:
+                print(point)
+                vehicle = self.world.try_spawn_actor(vehicle_bp, point)
+                vehicle_list.append(vehicle)
+                vehicles.append(vehicle)
+            except:
+                print('failed')  # if failed, print the hints.
+            
+        # add those vehicles into trafficemanager, and set them to autopilot.
+        tm = self.client.get_trafficmanager()  # create a TM object
+        tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
+        tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
+        tm.set_random_device_seed(9)
+        tm.set_respawn_dormant_vehicles(True)
+        tm.set_boundaries_respawn_dormant_vehicles(20, 500)
+        for v in vehicle_list:  # set every vehicle's mode to be "normal"
+            v.set_autopilot(True, tm_port)
+            tm.ignore_lights_percentage(v, 0)
+            tm.distance_to_leading_vehicle(v, 5.0)
+            tm.vehicle_percentage_speed_difference(v, -15)
+            tm.update_vehicle_lights(v, True)
+            tm.set_route(v, ["Straight"])
+        print(len(vehicle_list))
 
     def modify_vehicle_physics(self, actor):
         #If actor is not a vehicle, we cannot use the physics control
@@ -240,15 +286,21 @@ class World(object):
         self.camera_manager.sensor = None
         self.camera_manager.index = None
 
-    def destroy(self):
+    def destroy(self, world):
         """Destroys all actors"""
         actors = [
             self.camera_manager.sensor,
             self.player]
+        # destroy player and sensors
         for actor in actors:
             if actor is not None:
                 actor.destroy()
-        for actor in walkers:
+        # destroy walkers
+        for actor in world.get_actors():
+            if actor is not None and actor.type_id == "controller.ai.walker":
+                actor.destroy()
+        # destroy vehicles
+        for vehicle in vehicles:
             if actor is not None:
                 actor.destroy()
 
@@ -305,8 +357,8 @@ class CameraManager(object):
             blp = bp_library.find(item[0])
             blp.set_attribute('fov', '110')
             if item[0].startswith('sensor.camera'):
-                blp.set_attribute('image_size_x', str(800))
-                blp.set_attribute('image_size_y', str(900))
+                blp.set_attribute('image_size_x', str(600))
+                blp.set_attribute('image_size_y', str(400))
             item.append(blp)
         self.index = None
 
@@ -384,14 +436,14 @@ def game_loop(args):
             (args.width, args.height),
             pygame.HWSURFACE | pygame.DOUBLEBUF)
 
-        world = World(client.get_world(), args)
+        world = World(client.get_world(), args, client)
         controller = KeyboardControl(world)
 
-        waypoints = world.map.generate_waypoints(0.1)
-        for w in waypoints:
-            world.world.debug.draw_string(w.transform.location, 'O', draw_shadow=False,
-                                       color=carla.Color(r=255, g=0, b=0), life_time=120.0,
-                                       persistent_lines=True)
+        # waypoints = world.map.generate_waypoints(0.1)
+        # for w in waypoints:
+        #     world.world.debug.draw_string(w.transform.location, 'O', draw_shadow=False,
+        #                                color=carla.Color(r=255, g=0, b=0), life_time=120.0,
+        #                                persistent_lines=True)
 
         if args.agent == "Basic":                                                                                                                                                       
             agent = BasicAgent(world.player)
@@ -503,6 +555,8 @@ def game_loop(args):
         end_destination.y = -58.023651
         different_end_destinations.append(end_destination)
 
+        spawn_vehicle_at_spawn = False
+
         ####################################################
 
         while True:
@@ -522,19 +576,30 @@ def game_loop(args):
 
             loc = world.player.get_location()
 
-            # SPAWN PEDESTRIAN AT CROSSWALK
+            # SPAWN PEDESTRIAN AT CROSSWALK and VEHICLE
             if loc.x < 55  and loc.x > 50 and loc.y < 25 and loc.y > 22 and is_spawned == False:
                 spawn_pedestrians(world=world.world, client=client, number_of_pedestrians=1) 
+                world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=106, y=52)
+                world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=99,y=-22)
                 is_spawned = True
+            
+            # SPAWN VEHICLES LEFT AND RIGHT OF SPAWNED PLAYER
+            if spawn_vehicle_at_spawn == False:
+                spawn_vehicle_at_spawn = True
+                world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=-52.498489, y=-11.581840)
+                world.spawn_vehicles_straight(radius=50, numbers_of_vehicles=1, x=-45, y=63)
+                spawn_vehicle_at_spawn = True
+
+            # # SPAWN VEHICLE AT NEXT INTERSECTION
+            # if loc.x < 18 and loc.x > 18.9 and loc.y > 24 and loc < 24.9:
+            #     world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=, y=)
+
 
             if time.time() - oldTime >= (59*15) and time.time() - oldTime < (59*16) or index == 12:
                     print("It has been 15 minutes, scenario ending")
                     print("index: " + str(index))
                     print(str(time.time()-oldTime/59))
                     break
-
-            print(loc)
-
 
             if agent.done():
                 if args.loop:
@@ -559,7 +624,7 @@ def game_loop(args):
             world.world.apply_settings(settings)
             traffic_manager.set_synchronous_mode(True)
 
-            world.destroy()
+            world.destroy(world=world.world)
 
         pygame.quit()
 
@@ -592,7 +657,7 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='800x900',
+        default='600x400',
         help='Window resolution (default: 1280x720)')
     argparser.add_argument(
         '--sync',
