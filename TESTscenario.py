@@ -81,7 +81,7 @@ def find_weather_presets():
 # ==============================================================================
 
 # Spawning Pedestrians givent the world, client and amount of pedestrians
-def spawn_pedestrians(world, client, number_of_pedestrians):
+def spawn_pedestrians(world, client, number_of_pedestrians, x, y):
     # add pedestrians to the world
     blueprintsWalkers = world.get_blueprint_library().filter("walker.pedestrian.*")
     walker_bp = random.choice(blueprintsWalkers)
@@ -89,9 +89,10 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
     spawn_points = []
     for i in range(number_of_pedestrians):
         spawn_point = carla.Transform()
-        spawn_point.location = cross_walks[0] #world.get_random_location_from_navigation()
-        spawn_point.location.y = spawn_point.location.y + 6
-        spawn_point.location.x = spawn_point.location.x + 2
+        spawn_point.location = cross_walks[0]
+        spawn_point.location.y = y
+        spawn_point.location.x = x
+        spawn_point.location.z = 1.0
         if (spawn_point.location != None):
             spawn_points.append(spawn_point)
 
@@ -126,7 +127,6 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
     for i in range(len(walkers_list)):
         all_id.append(walkers_list[i]["con"])
         all_id.append(walkers_list[i]["id"])
-        #walkers.append(walkers_list[i]["id"])
     all_actors = world.get_actors(all_id)
 
     world.wait_for_tick()
@@ -237,7 +237,7 @@ class World(object):
 
         accessible_points = self.map.get_spawn_points()
 
-        for i in range(1):
+        for i in range(numbers_of_vehicles):
             point = accessible_points[i]
             point.location.x = x
             point.location.y = y
@@ -295,14 +295,14 @@ class World(object):
         for actor in actors:
             if actor is not None:
                 actor.destroy()
-        # destroy walkers
-        for actor in world.get_actors():
-            if actor is not None and actor.type_id == "controller.ai.walker":
-                actor.destroy()
-        # destroy vehicles
-        for vehicle in vehicles:
-            if actor is not None:
-                actor.destroy()
+        # # destroy walkers
+        # for actor in world.get_actors():
+        #     if actor is not None and actor.type_id == "controller.ai.walker":
+        #         actor.destroy()
+        # # destroy vehicles
+        # for vehicle in vehicles:
+        #     if actor is not None:
+        #         actor.destroy()
 
 
 # ==============================================================================
@@ -334,7 +334,6 @@ class KeyboardControl(object):
 # ==============================================================================
 # -- CameraManager -------------------------------------------------------------
 # ==============================================================================
-
 
 class CameraManager(object):
     """ Class for camera management"""
@@ -464,16 +463,19 @@ def game_loop(args):
         print(end_destination)
 
         agent.set_destination(start_location=destination, end_location=end_destination)
+        
+        clock = pygame.time.Clock()
+
         first_crosswalk = world.player.get_location()
         first_crosswalk.x = 84
         first_crosswalk.y = 25
         first_crosswalk.z = 0.004
 
         cross_walks.append(first_crosswalk)
-        
-        clock = pygame.time.Clock()
 
         is_spawned = False
+
+        ignore_lights = False
 
         clock = pygame.time.Clock()
 
@@ -576,25 +578,43 @@ def game_loop(args):
 
             loc = world.player.get_location()
 
-            # SPAWN PEDESTRIAN AT CROSSWALK and VEHICLE
-            if loc.x < 55  and loc.x > 50 and loc.y < 25 and loc.y > 22 and is_spawned == False:
-                spawn_pedestrians(world=world.world, client=client, number_of_pedestrians=1) 
-                world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=106, y=52)
-                world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=99,y=-22)
-                is_spawned = True
-            
-            # SPAWN VEHICLES LEFT AND RIGHT OF SPAWNED PLAYER
+            ##### SCENARIOS #####
+
+            #1  SPAWN VEHICLES LEFT AND RIGHT OF SPAWNED PLAYER
             if spawn_vehicle_at_spawn == False:
                 spawn_vehicle_at_spawn = True
                 world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=-52.498489, y=-11.581840)
                 world.spawn_vehicles_straight(radius=50, numbers_of_vehicles=1, x=-45, y=63)
                 spawn_vehicle_at_spawn = True
 
+            #2 SPAWN PEDESTRIAN AT CROSSWALK and VEHICLES
+            if loc.x < 55 and loc.x > 50 and loc.y < 25 and loc.y > 22 and len(walkers) == 0:
+                spawn_pedestrians(world=world.world, client=client, number_of_pedestrians=1, x=86,y=31) 
+                world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=106, y=52)
+                world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=99,y=-22)
+
+            #3 SPAWN PEDESTRIAN AT NEXT CROSSWALK AFTER #2
+            if loc.x < 88 and loc.x > 87 and loc.y < 25 and loc.y > 24 and len(walkers) == 1:
+                spawn_pedestrians(world=world.world, client=client, number_of_pedestrians=1, x=111.590347, y=2.08)
+
+            #4 Ignore red lights for the next few blocks
+            if loc.x < 66 and loc.x > 65 and loc.y < -64 and loc.y > -65 and ignore_lights == False:
+                agent.ignore_traffic_lights(active=True)
+                ignore_lights = True
+                print("Ignoring traffic lights")
+                
+            # Turn back to following traffic lights
+            if loc.x < -66 and loc.x > -67 and loc.y < 17 and loc.y > 16 and ignore_lights == True:
+                agent.ignore_traffic_lights(active=False)
+                ignore_lights = False
+                print("Not ignoring traffic lights")
+
             # # SPAWN VEHICLE AT NEXT INTERSECTION
             # if loc.x < 18 and loc.x > 18.9 and loc.y > 24 and loc < 24.9:
             #     world.spawn_vehicles_straight(radius=50.0, numbers_of_vehicles=1, x=, y=)
 
 
+            # END script if time limit reaches (15 min) or it has reached it's last destination
             if time.time() - oldTime >= (59*15) and time.time() - oldTime < (59*16) or index == 12:
                     print("It has been 15 minutes, scenario ending")
                     print("index: " + str(index))
